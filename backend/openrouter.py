@@ -41,7 +41,14 @@ async def query_model(
             response.raise_for_status()
 
             data = response.json()
-            message = data['choices'][0]['message']
+            choice = data['choices'][0]
+
+            # Check if there's an error in the response
+            if 'error' in choice and choice['error']:
+                error_msg = choice['error'].get('message', 'Unknown error')
+                raise Exception(f"Model API error: {error_msg}")
+
+            message = choice['message']
 
             return {
                 'content': message.get('content'),
@@ -50,6 +57,9 @@ async def query_model(
 
     except Exception as e:
         print(f"Error querying model {model}: {e}")
+        print(f"Response status: {response.status_code if 'response' in locals() else 'N/A'}")
+        if 'response' in locals():
+            print(f"Response body: {response.text}")
         return None
 
 

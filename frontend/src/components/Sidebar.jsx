@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import './Sidebar.css';
 
 export default function Sidebar({
@@ -6,7 +6,18 @@ export default function Sidebar({
   currentConversationId,
   onSelectConversation,
   onNewConversation,
+  onDeleteConversation,
 }) {
+  const [showMenuId, setShowMenuId] = useState(null);
+
+  const handleDeleteClick = (e, convId) => {
+    e.stopPropagation();
+    if (window.confirm('Are you sure you want to delete this conversation?')) {
+      onDeleteConversation(convId);
+      setShowMenuId(null);
+    }
+  };
+
   return (
     <div className="sidebar">
       <div className="sidebar-header">
@@ -28,11 +39,35 @@ export default function Sidebar({
               }`}
               onClick={() => onSelectConversation(conv.id)}
             >
-              <div className="conversation-title">
-                {conv.title || 'New Conversation'}
+              <div className="conversation-content">
+                <div className="conversation-title">
+                  {conv.title || 'New Conversation'}
+                </div>
+                <div className="conversation-meta">
+                  {conv.message_count} messages
+                </div>
               </div>
-              <div className="conversation-meta">
-                {conv.message_count} messages
+              <div className="conversation-menu">
+                <button
+                  className="menu-button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setShowMenuId(showMenuId === conv.id ? null : conv.id);
+                  }}
+                  title="Options"
+                >
+                  ⋮
+                </button>
+                {showMenuId === conv.id && (
+                  <div className="dropdown-menu">
+                    <button
+                      className="menu-item delete"
+                      onClick={(e) => handleDeleteClick(e, conv.id)}
+                    >
+                      Delete
+                    </button>
+                  </div>
+                )}
               </div>
             </div>
           ))

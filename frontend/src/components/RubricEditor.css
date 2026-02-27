@@ -1,0 +1,309 @@
+/* ── Rubric Editor ─────────────────────────────────────────── */
+
+.rubric-editor {
+  width: 100%;
+  background: var(--bg-surface);
+  border: 1px solid rgba(15, 23, 42, 0.1);
+  border-radius: var(--radius-lg);   /* matches .prompt-box */
+  padding: 12px 14px;
+  margin-bottom: 10px;
+  box-sizing: border-box;
+  box-shadow:
+    0 1px 0 0 rgba(255, 255, 255, 0.8) inset,
+    0 2px 4px rgba(15, 23, 42, 0.04),
+    0 6px 16px rgba(15, 23, 42, 0.08),
+    0 16px 32px rgba(15, 23, 42, 0.06);
+}
+
+/* Header row */
+
+.rubric-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+
+.rubric-title {
+  font-size: var(--fs-13);
+  font-weight: 600;
+  color: var(--text-strong);
+  letter-spacing: 0.01em;
+}
+
+.rubric-header-actions {
+  display: flex;
+  gap: 4px;
+}
+
+/* Action buttons (Save / Load / Clear) */
+
+.rubric-action-btn {
+  padding: 3px 9px;
+  border-radius: var(--radius-xs);
+  border: 1px solid var(--border);
+  background: var(--bg-subtle);
+  color: var(--text-muted);
+  font-size: var(--fs-11);
+  font-weight: 500;
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s, background 0.15s;
+  white-space: nowrap;
+}
+
+.rubric-action-btn:hover {
+  border-color: var(--border-strong);
+  color: var(--text-body);
+}
+
+.rubric-action-btn.primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+.rubric-action-btn.primary:hover {
+  background: var(--accent-hover);
+}
+
+.rubric-action-btn.primary:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.rubric-action-btn.danger:hover {
+  border-color: var(--danger);
+  color: var(--danger);
+}
+
+/* ── Save row ──────────────────────────────────────────────── */
+
+.rubric-save-row {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+
+.rubric-save-input {
+  flex: 1;
+  padding: 5px 9px;
+  border-radius: var(--radius-xs);
+  border: 1px solid var(--border);
+  background: var(--bg-subtle);
+  font-size: var(--fs-12);
+  color: var(--text-body);
+  outline: none;
+  min-width: 0;
+}
+
+.rubric-save-input:focus {
+  border-color: var(--accent-outline);
+}
+
+/* ── Saved rubrics list ────────────────────────────────────── */
+
+.rubric-saved-list {
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-xs);
+  margin-bottom: 10px;
+  max-height: 140px;
+  overflow-y: auto;
+}
+
+.rubric-saved-empty {
+  padding: 10px;
+  text-align: center;
+  color: var(--text-faint);
+  font-size: var(--fs-12);
+}
+
+.rubric-saved-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 8px;
+  cursor: pointer;
+  transition: background 0.1s;
+}
+
+.rubric-saved-item:hover {
+  background: var(--bg-soft);
+}
+
+.rubric-saved-item + .rubric-saved-item {
+  border-top: 1px solid var(--border-soft);
+}
+
+.rubric-saved-info {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.rubric-saved-name {
+  font-size: var(--fs-12);
+  font-weight: 500;
+  color: var(--text-body);
+}
+
+.rubric-saved-count {
+  font-size: var(--fs-11);
+  color: var(--text-faint);
+}
+
+.rubric-saved-delete {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: var(--radius-xs);
+  border: none;
+  background: transparent;
+  color: var(--text-faint);
+  cursor: pointer;
+  transition: background 0.1s, color 0.1s;
+}
+
+.rubric-saved-delete:hover {
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+
+/* ── Criteria list ─────────────────────────────────────────── */
+
+.rubric-criteria-list {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.rubric-criterion-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.rubric-criterion-name {
+  flex: 1;
+  padding: 7px 10px;
+  border-radius: var(--radius-xs);
+  border: 1px solid var(--border);
+  background: var(--bg-subtle);
+  font-size: var(--fs-13);
+  color: var(--text-body);
+  outline: none;
+  min-width: 0;
+}
+
+.rubric-criterion-name:focus {
+  border-color: var(--accent-outline);
+}
+
+.rubric-criterion-name::placeholder {
+  color: var(--text-faint);
+}
+
+.rubric-criterion-remove {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: var(--radius-xs);
+  border: none;
+  background: transparent;
+  color: var(--text-faint);
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background 0.1s, color 0.1s;
+}
+
+.rubric-criterion-remove:hover {
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+
+/* ── Weight dots ───────────────────────────────────────────── */
+
+.rubric-weight-dots {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.rubric-weight-dot {
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  border: 1.5px solid var(--border-strong);
+  background: var(--bg-subtle);
+  cursor: pointer;
+  padding: 0;
+  transition: transform 0.1s, border-color 0.1s;
+}
+
+/* Active dots use inline style for graduated shading */
+.rubric-weight-dot.active {
+  /* fallback – overridden by inline style */
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+.rubric-weight-dot:not(.active):hover {
+  border-color: var(--accent-outline);
+  transform: scale(1.15);
+}
+
+
+/* ── Add criterion button ──────────────────────────────────── */
+
+.rubric-add-btn {
+  margin-top: 8px;
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  padding: 2px 2px;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: var(--fs-13);
+  font-weight: 500;
+  cursor: pointer;
+  transition: color 0.15s;
+  width: auto;
+}
+
+.rubric-add-btn::before {
+  content: '+';
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  border: 1.5px dashed var(--border-strong);
+  font-size: 18px;
+  line-height: 1;
+  flex-shrink: 0;
+  transition: border-color 0.15s, color 0.15s;
+}
+
+.rubric-add-btn:hover {
+  color: var(--text-body);
+}
+
+.rubric-add-btn:hover::before {
+  border-color: var(--text-muted);
+  color: var(--text-body);
+}
+
+/* ── Empty hint ────────────────────────────────────────────── */
+
+.rubric-empty-hint {
+  padding: 4px 0 2px;
+  font-size: var(--fs-11);
+  color: var(--text-faint);
+  line-height: 1.4;
+}

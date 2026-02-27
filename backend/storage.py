@@ -1,11 +1,22 @@
 """JSON-based storage for conversations."""
 
+import asyncio
 import json
 import os
 from datetime import datetime
 from typing import List, Dict, Any, Optional
 from pathlib import Path
 from .config import DATA_DIR
+
+# Per-conversation locks to prevent concurrent write corruption
+_locks: dict[str, asyncio.Lock] = {}
+
+
+def _get_lock(conversation_id: str) -> asyncio.Lock:
+    """Get or create an asyncio lock for a conversation."""
+    if conversation_id not in _locks:
+        _locks[conversation_id] = asyncio.Lock()
+    return _locks[conversation_id]
 
 
 def ensure_data_dir():
@@ -107,31 +118,39 @@ def list_conversations() -> List[Dict[str, Any]]:
     return conversations
 
 
-def add_user_message(conversation_id: str, content: str):
+async def add_user_message(
+    conversation_id: str,
+    content: str,
+    attachments: Optional[List[Dict[str, Any]]] = None,
+):
     """
     Add a user message to a conversation.
 
     Args:
         conversation_id: Conversation identifier
         content: User message content
+        attachments: Optional attachment metadata
     """
-    conversation = get_conversation(conversation_id)
-    if conversation is None:
-        raise ValueError(f"Conversation {conversation_id} not found")
+    async with _get_lock(conversation_id):
+        conversation = get_conversation(conversation_id)
+        if conversation is None:
+            raise ValueError(f"Conversation {conversation_id} not found")
 
-    conversation["messages"].append({
-        "role": "user",
-        "content": content
-    })
+        conversation["messages"].append({
+            "role": "user",
+            "content": content,
+            "attachments": attachments or [],
+        })
 
-    save_conversation(conversation)
+        save_conversation(conversation)
 
 
-def add_assistant_message(
+async def add_assistant_message(
     conversation_id: str,
     stage1: List[Dict[str, Any]],
     stage2: List[Dict[str, Any]],
-    stage3: Dict[str, Any]
+    stage3: Dict[str, Any],
+    metadata: Optional[Dict[str, Any]] = None,
 ):
     """
     Add an assistant message with all 3 stages to a conversation.
@@ -141,22 +160,25 @@ def add_assistant_message(
         stage1: List of individual model responses
         stage2: List of model rankings
         stage3: Final synthesized response
+        metadata: Additional metadata for rankings and usage
     """
-    conversation = get_conversation(conversation_id)
-    if conversation is None:
-        raise ValueError(f"Conversation {conversation_id} not found")
+    async with _get_lock(conversation_id):
+        conversation = get_conversation(conversation_id)
+        if conversation is None:
+            raise ValueError(f"Conversation {conversation_id} not found")
 
-    conversation["messages"].append({
-        "role": "assistant",
-        "stage1": stage1,
-        "stage2": stage2,
-        "stage3": stage3
-    })
+        conversation["messages"].append({
+            "role": "assistant",
+            "stage1": stage1,
+            "stage2": stage2,
+            "stage3": stage3,
+            "metadata": metadata or {},
+        })
 
-    save_conversation(conversation)
+        save_conversation(conversation)
 
 
-def update_conversation_title(conversation_id: str, title: str):
+async def update_conversation_title(conversation_id: str, title: str):
     """
     Update the title of a conversation.
 
@@ -164,12 +186,13 @@ def update_conversation_title(conversation_id: str, title: str):
         conversation_id: Conversation identifier
         title: New title for the conversation
     """
-    conversation = get_conversation(conversation_id)
-    if conversation is None:
-        raise ValueError(f"Conversation {conversation_id} not found")
+    async with _get_lock(conversation_id):
+        conversation = get_conversation(conversation_id)
+        if conversation is None:
+            raise ValueError(f"Conversation {conversation_id} not found")
 
-    conversation["title"] = title
-    save_conversation(conversation)
+        conversation["title"] = title
+        save_conversation(conversation)
 
 
 def delete_conversation(conversation_id: str):
@@ -185,3 +208,20 @@ def delete_conversation(conversation_id: str):
         raise ValueError(f"Conversation {conversation_id} not found")
 
     os.remove(path)
+
+
+async def clear_conversation_messages(conversation_id: str):
+    """
+    Clear all messages from a conversation, keeping metadata intact.
+    Used when user wants to edit the first message and start fresh.
+
+    Args:
+        conversation_id: Conversation identifier
+    """
+    async with _get_lock(conversation_id):
+        conversation = get_conversation(conversation_id)
+        if conversation is None:
+            raise ValueError(f"Conversation {conversation_id} not found")
+
+        conversation["messages"] = []
+        save_conversation(conversation)

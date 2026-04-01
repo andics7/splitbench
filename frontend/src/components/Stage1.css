@@ -195,6 +195,54 @@
   gap: 10px;
 }
 
+.stage1-grid.stacked {
+  grid-template-columns: 1fr;
+}
+
+/* --- Split container (2 models, side-by-side) --- */
+
+.stage1-split-container {
+  display: flex;
+  gap: 0;
+}
+
+.stage1-split-panel {
+  min-width: 0;
+  overflow: hidden;
+}
+
+.stage1-resizer {
+  flex: 0 0 8px;
+  cursor: col-resize;
+  background: linear-gradient(
+    to right,
+    transparent 0,
+    transparent 2px,
+    var(--border) 2px,
+    var(--border) 3px,
+    transparent 3px,
+    transparent 100%
+  );
+  transition: background 0.15s;
+}
+
+.stage1-resizer:hover,
+.stage1-split-container.is-resizing .stage1-resizer {
+  background: linear-gradient(
+    to right,
+    transparent 0,
+    transparent 2px,
+    var(--accent-outline) 2px,
+    var(--accent-outline) 3px,
+    transparent 3px,
+    transparent 100%
+  );
+}
+
+.stage1-split-container.is-resizing {
+  user-select: none;
+}
+
 .response-card {
   display: flex;
   flex-direction: column;
@@ -263,6 +311,20 @@
   border-color: var(--accent-outline);
 }
 
+@media (max-width: 959px) {
+  .stage1-split-container {
+    flex-direction: column;
+  }
+
+  .stage1-split-panel {
+    flex-basis: auto !important;
+  }
+
+  .stage1-resizer {
+    display: none;
+  }
+}
+
 @media (min-width: 960px) {
   .stage-header {
     flex-direction: row;
@@ -270,7 +332,7 @@
     align-items: center;
   }
 
-  .stage1-grid {
+  .stage1-grid:not(.stacked) {
     grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
     gap: 12px;
   }

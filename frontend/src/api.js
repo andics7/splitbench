@@ -2,53 +2,145 @@
  * API client for the LLM Council backend.
  */
 
-const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8001';
+const API_BASE = import.meta.env.VITE_API_URL ||
+  (typeof window !== 'undefined' && window.location.hostname === 'localhost'
+    ? 'http://localhost:8001'
+    : '');
+
+function getProfileId() {
+  return localStorage.getItem('splitbench.profileId') || '';
+}
+
+function authHeaders() {
+  const profileId = getProfileId();
+  return profileId ? { 'X-Profile-Id': profileId } : {};
+}
 
 export const api = {
-  /**
-   * List all conversations.
-   */
-  async listConversations() {
-    const response = await fetch(`${API_BASE}/api/conversations`);
+  // -----------------------------------------------------------------------
+  // Profile management (no auth required)
+  // -----------------------------------------------------------------------
+
+  async listProfiles() {
+    const response = await fetch(`${API_BASE}/api/profiles`);
+    if (!response.ok) throw new Error('Failed to list profiles');
+    return response.json();
+  },
+
+  async createProfile(name, apiKey, mgmtKey = null) {
+    const response = await fetch(`${API_BASE}/api/profiles`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name,
+        openrouter_api_key: apiKey,
+        openrouter_mgmt_key: mgmtKey,
+      }),
+    });
     if (!response.ok) {
-      throw new Error('Failed to list conversations');
+      const err = await response.json().catch(() => ({}));
+      throw new Error(err.detail || 'Failed to create profile');
     }
     return response.json();
   },
 
-  /**
-   * Create a new conversation.
-   */
+  async getProfile(profileId) {
+    const response = await fetch(`${API_BASE}/api/profiles/${profileId}`);
+    if (!response.ok) throw new Error('Failed to get profile');
+    return response.json();
+  },
+
+  async updateProfile(profileId, updates) {
+    const response = await fetch(`${API_BASE}/api/profiles/${profileId}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(updates),
+    });
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({}));
+      throw new Error(err.detail || 'Failed to update profile');
+    }
+    return response.json();
+  },
+
+  async deleteProfile(profileId) {
+    const response = await fetch(`${API_BASE}/api/profiles/${profileId}`, {
+      method: 'DELETE',
+    });
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({}));
+      throw new Error(err.detail || 'Failed to delete profile');
+    }
+  },
+
+  async verifyPin(profileId, pin) {
+    const response = await fetch(`${API_BASE}/api/profiles/${profileId}/verify-pin`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ pin }),
+    });
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({}));
+      throw new Error(err.detail || 'Incorrect PIN');
+    }
+    return response.json();
+  },
+
+  async setPin(profileId, pin) {
+    const response = await fetch(`${API_BASE}/api/profiles/${profileId}/pin`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ pin }),
+    });
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({}));
+      throw new Error(err.detail || 'Failed to set PIN');
+    }
+    return response.json();
+  },
+
+  async validateProfileKey(profileId) {
+    const response = await fetch(`${API_BASE}/api/profiles/${profileId}/validate-key`, {
+      method: 'POST',
+    });
+    if (!response.ok) throw new Error('Failed to validate key');
+    return response.json();
+  },
+
+  // -----------------------------------------------------------------------
+  // Conversations (auth required)
+  // -----------------------------------------------------------------------
+
+  async listConversations() {
+    const response = await fetch(`${API_BASE}/api/conversations`, {
+      headers: { ...authHeaders() },
+    });
+    if (!response.ok) throw new Error('Failed to list conversations');
+    return response.json();
+  },
+
   async createConversation() {
     const response = await fetch(`${API_BASE}/api/conversations`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
+        ...authHeaders(),
       },
       body: JSON.stringify({}),
     });
-    if (!response.ok) {
-      throw new Error('Failed to create conversation');
-    }
+    if (!response.ok) throw new Error('Failed to create conversation');
     return response.json();
   },
 
-  /**
-   * Get a specific conversation.
-   */
   async getConversation(conversationId) {
     const response = await fetch(
-      `${API_BASE}/api/conversations/${conversationId}`
+      `${API_BASE}/api/conversations/${conversationId}`,
+      { headers: { ...authHeaders() } }
     );
-    if (!response.ok) {
-      throw new Error('Failed to get conversation');
-    }
+    if (!response.ok) throw new Error('Failed to get conversation');
     return response.json();
   },
 
-  /**
-   * Send a message in a conversation.
-   */
   async sendMessage(conversationId, content, attachments = []) {
     const response = await fetch(
       `${API_BASE}/api/conversations/${conversationId}/message`,
@@ -56,26 +148,15 @@ export const api = {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          ...authHeaders(),
         },
         body: JSON.stringify({ content, attachments }),
       }
     );
-    if (!response.ok) {
-      throw new Error('Failed to send message');
-    }
+    if (!response.ok) throw new Error('Failed to send message');
     return response.json();
   },
 
-  /**
-   * Send a message and receive streaming updates.
-   * @param {string} conversationId - The conversation ID
-   * @param {string} content - The message content
-   * @param {Array<object>} attachments - Prompt attachments
-   * @param {string} synthesisMode - The synthesis mode: 'best' or 'synthesize'
-   * @param {function} onEvent - Callback function for each event: (eventType, data) => void
-   * @param {AbortSignal} signal - Optional abort signal for stopping an active stream
-   * @returns {Promise<void>}
-   */
   async sendMessageStream(conversationId, content, attachments, synthesisMode, onEvent, signal, category, rubric) {
     const response = await fetch(
       `${API_BASE}/api/conversations/${conversationId}/message/stream`,
@@ -83,6 +164,7 @@ export const api = {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          ...authHeaders(),
         },
         signal,
         body: JSON.stringify({
@@ -95,9 +177,7 @@ export const api = {
       }
     );
 
-    if (!response.ok) {
-      throw new Error('Failed to send message');
-    }
+    if (!response.ok) throw new Error('Failed to send message');
 
     const reader = response.body.getReader();
     const decoder = new TextDecoder();
@@ -142,100 +222,85 @@ export const api = {
     }
   },
 
-  /**
-   * Get OpenRouter account balance and spending info.
-   */
   async getBalance() {
-    const response = await fetch(`${API_BASE}/api/balance`);
-    if (!response.ok) {
-      throw new Error('Failed to fetch balance');
-    }
+    const response = await fetch(`${API_BASE}/api/balance`, {
+      headers: { ...authHeaders() },
+    });
+    if (!response.ok) throw new Error('Failed to fetch balance');
     return response.json();
   },
 
-  /**
-   * Delete a conversation.
-   */
   async deleteConversation(conversationId) {
     const response = await fetch(
       `${API_BASE}/api/conversations/${conversationId}`,
       {
         method: 'DELETE',
+        headers: { ...authHeaders() },
       }
     );
-    if (!response.ok) {
-      throw new Error('Failed to delete conversation');
-    }
+    if (!response.ok) throw new Error('Failed to delete conversation');
   },
 
-  /**
-   * Clear all messages from a conversation.
-   */
   async clearConversationMessages(conversationId) {
     const response = await fetch(
       `${API_BASE}/api/conversations/${conversationId}/clear-messages`,
       {
         method: 'POST',
+        headers: { ...authHeaders() },
       }
     );
-    if (!response.ok) {
-      throw new Error('Failed to clear conversation messages');
-    }
+    if (!response.ok) throw new Error('Failed to clear conversation messages');
     return response.json();
   },
 
-  /**
-   * Fetch available models from OpenRouter (cached on backend).
-   */
   async getModels() {
-    const response = await fetch(`${API_BASE}/api/models`);
-    if (!response.ok) {
-      throw new Error('Failed to fetch models');
-    }
+    const response = await fetch(`${API_BASE}/api/models`, {
+      headers: { ...authHeaders() },
+    });
+    if (!response.ok) throw new Error('Failed to fetch models');
     return response.json();
   },
 
-  /**
-   * Get current model configuration.
-   */
   async getModelConfig() {
-    const response = await fetch(`${API_BASE}/api/config/models`);
-    if (!response.ok) {
-      throw new Error('Failed to fetch model config');
-    }
+    const response = await fetch(`${API_BASE}/api/config/models`, {
+      headers: { ...authHeaders() },
+    });
+    if (!response.ok) throw new Error('Failed to fetch model config');
     return response.json();
   },
 
-  /**
-   * Update model configuration.
-   */
   async updateModelConfig(councilModels, chairmanModel) {
     const response = await fetch(`${API_BASE}/api/config/models`, {
       method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        ...authHeaders(),
+      },
       body: JSON.stringify({
         council_models: councilModels,
         chairman_model: chairmanModel,
       }),
     });
-    if (!response.ok) {
-      throw new Error('Failed to update model config');
-    }
+    if (!response.ok) throw new Error('Failed to update model config');
     return response.json();
   },
 
   // -----------------------------------------------------------------------
-  // Prompt templates
+  // Prompt templates (auth required)
   // -----------------------------------------------------------------------
 
   async getPromptTemplates() {
-    const response = await fetch(`${API_BASE}/api/prompts/templates`);
+    const response = await fetch(`${API_BASE}/api/prompts/templates`, {
+      headers: { ...authHeaders() },
+    });
     if (!response.ok) throw new Error('Failed to fetch templates');
     return response.json();
   },
 
   async getPromptTemplate(templateId) {
-    const response = await fetch(`${API_BASE}/api/prompts/templates/${templateId}`);
+    const response = await fetch(`${API_BASE}/api/prompts/templates/${templateId}`, {
+      headers: { ...authHeaders() },
+    });
     if (!response.ok) throw new Error('Failed to fetch template');
     return response.json();
   },
@@ -243,7 +308,10 @@ export const api = {
   async createPromptTemplate(template) {
     const response = await fetch(`${API_BASE}/api/prompts/templates`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        ...authHeaders(),
+      },
       body: JSON.stringify(template),
     });
     if (!response.ok) throw new Error('Failed to create template');
@@ -253,7 +321,10 @@ export const api = {
   async updatePromptTemplate(templateId, template) {
     const response = await fetch(`${API_BASE}/api/prompts/templates/${templateId}`, {
       method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        ...authHeaders(),
+      },
       body: JSON.stringify(template),
     });
     if (!response.ok) throw new Error('Failed to update template');
@@ -263,6 +334,7 @@ export const api = {
   async deletePromptTemplate(templateId) {
     const response = await fetch(`${API_BASE}/api/prompts/templates/${templateId}`, {
       method: 'DELETE',
+      headers: { ...authHeaders() },
     });
     if (!response.ok) throw new Error('Failed to delete template');
   },
@@ -270,6 +342,7 @@ export const api = {
   async usePromptTemplate(templateId) {
     const response = await fetch(`${API_BASE}/api/prompts/templates/${templateId}/use`, {
       method: 'POST',
+      headers: { ...authHeaders() },
     });
     if (!response.ok) throw new Error('Failed to record template usage');
   },
@@ -281,11 +354,13 @@ export const api = {
   },
 
   // -----------------------------------------------------------------------
-  // Prompt history
+  // Prompt history (auth required)
   // -----------------------------------------------------------------------
 
   async getPromptHistory(limit = 20) {
-    const response = await fetch(`${API_BASE}/api/prompts/history?limit=${limit}`);
+    const response = await fetch(`${API_BASE}/api/prompts/history?limit=${limit}`, {
+      headers: { ...authHeaders() },
+    });
     if (!response.ok) throw new Error('Failed to fetch prompt history');
     return response.json();
   },
@@ -293,7 +368,10 @@ export const api = {
   async addPromptHistory(content, templateId = null, attachments = []) {
     const response = await fetch(`${API_BASE}/api/prompts/history`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        ...authHeaders(),
+      },
       body: JSON.stringify({
         content,
         template_id: templateId,
@@ -307,16 +385,19 @@ export const api = {
   async clearPromptHistory() {
     const response = await fetch(`${API_BASE}/api/prompts/history`, {
       method: 'DELETE',
+      headers: { ...authHeaders() },
     });
     if (!response.ok) throw new Error('Failed to clear prompt history');
   },
 
   // -----------------------------------------------------------------------
-  // Evaluation rubrics
+  // Evaluation rubrics (auth required)
   // -----------------------------------------------------------------------
 
   async getRubrics() {
-    const response = await fetch(`${API_BASE}/api/rubrics`);
+    const response = await fetch(`${API_BASE}/api/rubrics`, {
+      headers: { ...authHeaders() },
+    });
     if (!response.ok) throw new Error('Failed to fetch rubrics');
     return response.json();
   },
@@ -324,7 +405,10 @@ export const api = {
   async createRubric(rubric) {
     const response = await fetch(`${API_BASE}/api/rubrics`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        ...authHeaders(),
+      },
       body: JSON.stringify(rubric),
     });
     if (!response.ok) throw new Error('Failed to create rubric');
@@ -334,7 +418,10 @@ export const api = {
   async updateRubric(rubricId, rubric) {
     const response = await fetch(`${API_BASE}/api/rubrics/${rubricId}`, {
       method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        ...authHeaders(),
+      },
       body: JSON.stringify(rubric),
     });
     if (!response.ok) throw new Error('Failed to update rubric');
@@ -344,12 +431,13 @@ export const api = {
   async deleteRubric(rubricId) {
     const response = await fetch(`${API_BASE}/api/rubrics/${rubricId}`, {
       method: 'DELETE',
+      headers: { ...authHeaders() },
     });
     if (!response.ok) throw new Error('Failed to delete rubric');
   },
 
   // -----------------------------------------------------------------------
-  // Analytics
+  // Analytics (auth required)
   // -----------------------------------------------------------------------
 
   async getAnalytics(category = null, days = null) {
@@ -358,13 +446,17 @@ export const api = {
     if (days) params.append('days', String(days));
     const qs = params.toString();
     const url = `${API_BASE}/api/analytics${qs ? `?${qs}` : ''}`;
-    const response = await fetch(url);
+    const response = await fetch(url, {
+      headers: { ...authHeaders() },
+    });
     if (!response.ok) throw new Error('Failed to fetch analytics');
     return response.json();
   },
 
   async getAnalyticsSummary() {
-    const response = await fetch(`${API_BASE}/api/analytics/summary`);
+    const response = await fetch(`${API_BASE}/api/analytics/summary`, {
+      headers: { ...authHeaders() },
+    });
     if (!response.ok) throw new Error('Failed to fetch analytics summary');
     return response.json();
   },

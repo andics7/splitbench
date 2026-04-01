@@ -139,11 +139,15 @@
   display: flex;
   flex-direction: column;
   min-width: 0;
+  min-height: 0;
+  overflow: hidden;
 }
 
 .pl-grid {
   flex: 1;
+  min-height: 0;
   overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
   padding: 12px;
   display: grid;
   grid-template-columns: 1fr;
@@ -534,5 +538,27 @@
 
   .pl-fill-footer {
     padding: 14px 20px;
+  }
+}
+
+@media (max-width: 959px) {
+  .pl-panel {
+    padding-top: env(safe-area-inset-top);
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+
+  .pl-sidebar {
+    max-height: 25vh;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
+  }
+
+  .pl-grid {
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
+  }
+
+  .pl-fill-footer {
+    padding-bottom: max(12px, env(safe-area-inset-bottom));
   }
 }

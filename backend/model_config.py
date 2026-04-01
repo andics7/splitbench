@@ -1,10 +1,10 @@
-"""Dynamic model configuration with JSON persistence."""
+"""Dynamic model configuration with JSON persistence, scoped per profile."""
 
 import json
 import os
 from pathlib import Path
 
-CONFIG_PATH = "data/model_config.json"
+from .profiles import get_profile_data_dir
 
 _default_config = {
     "council_models": [
@@ -14,53 +14,58 @@ _default_config = {
     "chairman_model": "openrouter/aurora-alpha"
 }
 
-_current_config = None
-_config_mtime = 0.0
+# Per-profile cache: profile_id -> (config, mtime)
+_profile_configs: dict[str, dict] = {}
+_profile_config_mtimes: dict[str, float] = {}
 
 
-def load_config() -> dict:
+def _config_path(profile_id: str) -> str:
+    return str(get_profile_data_dir(profile_id) / "model_config.json")
+
+
+def load_config(profile_id: str) -> dict:
     """Load model config from disk, or return defaults. Re-reads if file changed."""
-    global _current_config, _config_mtime
+    path = _config_path(profile_id)
 
-    if os.path.exists(CONFIG_PATH):
+    if os.path.exists(path):
         try:
-            mtime = os.path.getmtime(CONFIG_PATH)
+            mtime = os.path.getmtime(path)
         except OSError:
             mtime = 0.0
 
-        if _current_config is not None and mtime == _config_mtime:
-            return _current_config
+        if profile_id in _profile_configs and mtime == _profile_config_mtimes.get(profile_id):
+            return _profile_configs[profile_id]
 
         try:
-            with open(CONFIG_PATH, 'r') as f:
-                _current_config = json.load(f)
-            _config_mtime = mtime
+            with open(path, 'r') as f:
+                _profile_configs[profile_id] = json.load(f)
+            _profile_config_mtimes[profile_id] = mtime
         except (json.JSONDecodeError, IOError):
-            _current_config = _default_config.copy()
+            _profile_configs[profile_id] = _default_config.copy()
     else:
-        _current_config = _default_config.copy()
-        save_config(_current_config)
-    return _current_config
+        _profile_configs[profile_id] = _default_config.copy()
+        save_config(profile_id, _profile_configs[profile_id])
+    return _profile_configs[profile_id]
 
 
-def save_config(config: dict):
+def save_config(profile_id: str, config: dict):
     """Persist model config to disk."""
-    global _current_config, _config_mtime
-    Path(os.path.dirname(CONFIG_PATH)).mkdir(parents=True, exist_ok=True)
-    with open(CONFIG_PATH, 'w') as f:
+    path = _config_path(profile_id)
+    Path(os.path.dirname(path)).mkdir(parents=True, exist_ok=True)
+    with open(path, 'w') as f:
         json.dump(config, f, indent=2)
-    _current_config = config
+    _profile_configs[profile_id] = config
     try:
-        _config_mtime = os.path.getmtime(CONFIG_PATH)
+        _profile_config_mtimes[profile_id] = os.path.getmtime(path)
     except OSError:
-        _config_mtime = 0.0
+        _profile_config_mtimes[profile_id] = 0.0
 
 
-def get_council_models() -> list:
+def get_council_models(profile_id: str) -> list:
     """Get current council model IDs."""
-    return load_config()["council_models"]
+    return load_config(profile_id)["council_models"]
 
 
-def get_chairman_model() -> str:
+def get_chairman_model(profile_id: str) -> str:
     """Get current chairman model ID."""
-    return load_config()["chairman_model"]
+    return load_config(profile_id)["chairman_model"]

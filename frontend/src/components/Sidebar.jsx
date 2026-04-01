@@ -22,6 +22,8 @@ export default function Sidebar({
   width,
   isCollapsed,
   onToggleCollapse,
+  currentProfile,
+  onSwitchProfile,
 }) {
   const [showMenuId, setShowMenuId] = useState(null);
   const [isBalanceExpanded, setIsBalanceExpanded] = useState(true);
@@ -293,6 +295,28 @@ export default function Sidebar({
               </span>
             </div>
           )}
+        </div>
+      )}
+
+      {currentProfile && (
+        <div className="sidebar-profile-section">
+          <button
+            className="sidebar-profile-btn"
+            onClick={onSwitchProfile}
+            title={isCollapsed ? currentProfile.name : 'Switch profile'}
+            aria-label="Switch profile"
+            data-tooltip={isCollapsed ? currentProfile.name : undefined}
+          >
+            <div className={`sidebar-profile-avatar${currentProfile.is_owner ? ' owner' : ''}`}>
+              {(currentProfile.name || '?')[0].toUpperCase()}
+            </div>
+            {!isCollapsed && (
+              <div className="sidebar-profile-info">
+                <span className="sidebar-profile-name">{currentProfile.name}</span>
+                {currentProfile.is_owner && <span className="sidebar-profile-badge">Owner</span>}
+              </div>
+            )}
+          </button>
         </div>
       )}
     </div>

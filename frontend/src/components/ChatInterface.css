@@ -17,7 +17,7 @@
 }
 
 .answer-toolbar {
-  max-width: 1200px;
+  max-width: 1600px;
   margin: 0 auto 12px;
   display: flex;
   align-items: center;
@@ -55,7 +55,7 @@
 
 .message-group {
   margin: 0 auto 18px;
-  max-width: 1200px;
+  max-width: 1600px;
 }
 
 .user-message,
@@ -295,7 +295,7 @@
   display: flex;
   align-items: center;
   gap: 10px;
-  max-width: 1200px;
+  max-width: 1600px;
   margin: 0 auto;
   padding: 8px 2px;
   color: var(--text-muted);
@@ -662,10 +662,11 @@
   background: rgba(247, 248, 250, 0.92);
   backdrop-filter: blur(8px);
   flex-shrink: 0;
+  padding-bottom: env(safe-area-inset-bottom);
 }
 
 .bottom-composer {
-  max-width: 1200px;
+  max-width: 1600px;
   margin: 0 auto;
   padding: 8px 10px 10px;
 }

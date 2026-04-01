@@ -4,7 +4,6 @@ import re
 from collections import Counter, defaultdict
 from typing import Any, Dict, List, Optional, Tuple
 
-from .model_config import get_chairman_model, get_council_models
 from .openrouter import query_model, query_models_parallel
 
 
@@ -40,12 +39,14 @@ def _build_user_query_context(user_query: str, attachments: List[Dict[str, Any]]
 async def stage1_collect_responses(
     user_query: str,
     attachments: Optional[List[Dict[str, Any]]] = None,
+    *,
+    api_key: str,
+    council_models: List[str],
 ) -> List[Dict[str, Any]]:
     """Stage 1: Collect individual responses from all council models."""
-    council_models = get_council_models()
     messages = [{"role": "user", "content": _build_user_query_context(user_query, attachments or [])}]
 
-    responses = await query_models_parallel(council_models, messages)
+    responses = await query_models_parallel(council_models, messages, api_key=api_key)
 
     stage1_results: List[Dict[str, Any]] = []
     for model in council_models:
@@ -208,6 +209,8 @@ async def stage2_collect_rankings(
     stage1_results: List[Dict[str, Any]],
     attachments: Optional[List[Dict[str, Any]]] = None,
     rubric: Optional[Any] = None,
+    *,
+    api_key: str,
 ) -> Tuple[List[Dict[str, Any]], Dict[str, str]]:
     """Stage 2: Each successful Stage 1 model ranks the anonymized responses."""
     successful_stage1_results = [
@@ -262,7 +265,7 @@ IMPORTANT: Your final ranking MUST be formatted EXACTLY as follows:
 Now provide your evaluation and ranking:"""
 
     messages = [{"role": "user", "content": ranking_prompt}]
-    responses = await query_models_parallel(evaluator_models, messages)
+    responses = await query_models_parallel(evaluator_models, messages, api_key=api_key)
 
     use_rubric = _has_active_rubric(rubric)
     criteria_names = [c["name"] for c in _get_rubric_criteria(rubric)] if use_rubric else []
@@ -315,6 +318,9 @@ async def stage3_synthesize_final(
     stage1_results: List[Dict[str, Any]],
     stage2_results: List[Dict[str, Any]],
     attachments: Optional[List[Dict[str, Any]]] = None,
+    *,
+    api_key: str,
+    chairman_model: str,
 ) -> Dict[str, Any]:
     """Stage 3: Chairman synthesizes final response."""
     stage1_text = "\n\n".join(
@@ -345,14 +351,13 @@ Your task as Chairman is to synthesize all of this information into a single, co
 Provide a clear, well-reasoned final answer that represents the council's collective wisdom:"""
 
     messages = [{"role": "user", "content": chairman_prompt}]
-    chairman = get_chairman_model()
-    response = await query_model(chairman, messages)
+    response = await query_model(chairman_model, messages, api_key=api_key)
 
     if response is None:
-        return {"model": chairman, "response": "Error: Unable to generate final synthesis.", "usage": {}}
+        return {"model": chairman_model, "response": "Error: Unable to generate final synthesis.", "usage": {}}
 
     return {
-        "model": chairman,
+        "model": chairman_model,
         "response": _normalize_content(response.get("content", "")) or "",
         "usage": response.get("usage", {}),
     }
@@ -479,6 +484,8 @@ def get_best_response(
 async def generate_conversation_title(
     user_query: str,
     attachments: Optional[List[Dict[str, Any]]] = None,
+    *,
+    api_key: str,
 ) -> str:
     """Generate a short title for a conversation based on the first user message."""
     query_context = _build_user_query_context(user_query, attachments or [])
@@ -490,7 +497,7 @@ Question: {query_context}
 Title:"""
 
     messages = [{"role": "user", "content": title_prompt}]
-    response = await query_model("google/gemini-2.5-flash", messages, timeout=30.0)
+    response = await query_model("google/gemini-2.5-flash", messages, api_key=api_key, timeout=30.0)
 
     if response is None:
         return "New Conversation"
@@ -504,5 +511,3 @@ Title:"""
         title = title[:47] + "..."
 
     return title
-
-

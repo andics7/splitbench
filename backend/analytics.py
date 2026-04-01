@@ -1,4 +1,4 @@
-"""Analytics data persistence for model performance tracking."""
+"""Analytics data persistence for model performance tracking, scoped per profile."""
 
 import asyncio
 import json
@@ -8,35 +8,48 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-ANALYTICS_FILE = Path(__file__).parent.parent / "data" / "analytics.json"
+from .profiles import get_profile_data_dir
 
-_lock = asyncio.Lock()
+# Per-profile locks
+_locks: dict[str, asyncio.Lock] = {}
 
 
-def _ensure_file():
+def _get_lock(profile_id: str) -> asyncio.Lock:
+    if profile_id not in _locks:
+        _locks[profile_id] = asyncio.Lock()
+    return _locks[profile_id]
+
+
+def _analytics_path(profile_id: str) -> Path:
+    return get_profile_data_dir(profile_id) / "analytics.json"
+
+
+def _ensure_file(profile_id: str):
     """Ensure the analytics file and parent dir exist."""
-    ANALYTICS_FILE.parent.mkdir(parents=True, exist_ok=True)
-    if not ANALYTICS_FILE.exists():
-        with open(ANALYTICS_FILE, "w") as f:
+    path = _analytics_path(profile_id)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    if not path.exists():
+        with open(path, "w") as f:
             json.dump({"records": []}, f, indent=2)
 
 
-def _load_records() -> List[Dict[str, Any]]:
+def _load_records(profile_id: str) -> List[Dict[str, Any]]:
     """Load all analytics records from disk."""
-    _ensure_file()
-    with open(ANALYTICS_FILE, "r") as f:
+    _ensure_file(profile_id)
+    with open(_analytics_path(profile_id), "r") as f:
         data = json.load(f)
     return data.get("records", [])
 
 
-def _save_records(records: List[Dict[str, Any]]):
+def _save_records(profile_id: str, records: List[Dict[str, Any]]):
     """Save all analytics records to disk."""
-    _ensure_file()
-    with open(ANALYTICS_FILE, "w") as f:
+    _ensure_file(profile_id)
+    with open(_analytics_path(profile_id), "w") as f:
         json.dump({"records": records}, f, indent=2)
 
 
 async def add_record(
+    profile_id: str,
     conversation_id: str,
     category: str,
     models: List[str],
@@ -46,8 +59,8 @@ async def add_record(
     evaluator_count: int,
 ) -> Dict[str, Any]:
     """Append a new analytics record after a successful council run."""
-    async with _lock:
-        records = _load_records()
+    async with _get_lock(profile_id):
+        records = _load_records(profile_id)
         winner_model = (
             aggregate_rankings[0]["model"]
             if aggregate_rankings
@@ -67,16 +80,17 @@ async def add_record(
             "model_count": len(models),
         }
         records.append(record)
-        _save_records(records)
+        _save_records(profile_id, records)
         return record
 
 
 def get_filtered_records(
+    profile_id: str,
     category: Optional[str] = None,
     days: Optional[int] = None,
 ) -> List[Dict[str, Any]]:
     """Return records filtered by category and/or time range."""
-    records = _load_records()
+    records = _load_records(profile_id)
 
     if category and category != "all":
         records = [r for r in records if r["category"] == category]
@@ -89,11 +103,12 @@ def get_filtered_records(
 
 
 def get_aggregated_analytics(
+    profile_id: str,
     category: Optional[str] = None,
     days: Optional[int] = None,
 ) -> Dict[str, Any]:
     """Compute aggregated analytics suitable for the dashboard."""
-    records = get_filtered_records(category, days)
+    records = get_filtered_records(profile_id, category, days)
 
     if not records:
         return {
@@ -139,7 +154,7 @@ def get_aggregated_analytics(
             model_stats[model]["times_tested"] += 1
             model_stats[model]["total_cost"] += cost_per_model
 
-        if winner:
+        if winner and rankings:
             model_stats[winner]["wins"] += 1
             model_stats[winner]["first_place_votes"] += 1
 

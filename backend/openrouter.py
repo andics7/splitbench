@@ -6,12 +6,12 @@ from typing import Any, Dict, List, Optional
 
 import httpx
 
-from .config import OPENROUTER_API_KEY, OPENROUTER_API_URL, OPENROUTER_MGMT_KEY
+from .config import OPENROUTER_API_URL
 
 # Shared HTTP client (created lazily, closed on shutdown)
 _client: Optional[httpx.AsyncClient] = None
 
-# Cache for available models list
+# Cache for available models list (shared across profiles — model list is the same)
 _models_cache = {"data": None, "fetched_at": 0}
 _MODELS_CACHE_TTL = 3600  # 1 hour
 
@@ -35,6 +35,7 @@ async def close_client():
 async def query_model(
     model: str,
     messages: List[Dict[str, Any]],
+    api_key: str,
     timeout: float = 120.0,
     extra_body: Optional[Dict[str, Any]] = None,
 ) -> Optional[Dict[str, Any]]:
@@ -44,6 +45,7 @@ async def query_model(
     Args:
         model: OpenRouter model identifier (e.g., "openai/gpt-4o")
         messages: List of message dicts with 'role' and 'content'
+        api_key: OpenRouter API key for this request
         timeout: Request timeout in seconds
         extra_body: Optional additional request fields merged into payload
 
@@ -51,7 +53,7 @@ async def query_model(
         Response dict with 'content' and optional 'reasoning_details', or None if failed
     """
     headers = {
-        "Authorization": f"Bearer {OPENROUTER_API_KEY}",
+        "Authorization": f"Bearer {api_key}",
         "Content-Type": "application/json",
     }
 
@@ -98,9 +100,12 @@ async def query_model(
         return None
 
 
-async def get_account_balance() -> Optional[Dict[str, Any]]:
+async def get_account_balance(
+    api_key: str,
+    mgmt_key: Optional[str] = None,
+) -> Optional[Dict[str, Any]]:
     """Fetch account balance and spending info from OpenRouter."""
-    headers = {"Authorization": f"Bearer {OPENROUTER_API_KEY}"}
+    headers = {"Authorization": f"Bearer {api_key}"}
     try:
         client = await get_client()
         response = await client.get("https://openrouter.ai/api/v1/key", headers=headers, timeout=15.0)
@@ -108,11 +113,11 @@ async def get_account_balance() -> Optional[Dict[str, Any]]:
         result = response.json().get("data", {})
         result.pop("label", None)
 
-        if OPENROUTER_MGMT_KEY:
+        if mgmt_key:
             try:
                 credits_resp = await client.get(
                     "https://openrouter.ai/api/v1/credits",
-                    headers={"Authorization": f"Bearer {OPENROUTER_MGMT_KEY}"},
+                    headers={"Authorization": f"Bearer {mgmt_key}"},
                     timeout=15.0,
                 )
                 credits_resp.raise_for_status()
@@ -126,6 +131,17 @@ async def get_account_balance() -> Optional[Dict[str, Any]]:
     except Exception as e:
         print(f"Error fetching account balance: {e}")
         return None
+
+
+async def validate_api_key(api_key: str) -> bool:
+    """Check if an OpenRouter API key is valid by calling the key info endpoint."""
+    headers = {"Authorization": f"Bearer {api_key}"}
+    try:
+        client = await get_client()
+        response = await client.get("https://openrouter.ai/api/v1/key", headers=headers, timeout=15.0)
+        return response.status_code == 200
+    except Exception:
+        return False
 
 
 def enrich_model(model: dict) -> dict:
@@ -143,13 +159,13 @@ def enrich_model(model: dict) -> dict:
     return model
 
 
-async def fetch_available_models() -> list:
+async def fetch_available_models(api_key: str) -> list:
     """Fetch available models from OpenRouter, with 1-hour cache."""
     now = time.time()
     if _models_cache["data"] and (now - _models_cache["fetched_at"]) < _MODELS_CACHE_TTL:
         return _models_cache["data"]
 
-    headers = {"Authorization": f"Bearer {OPENROUTER_API_KEY}"}
+    headers = {"Authorization": f"Bearer {api_key}"}
     try:
         client = await get_client()
         response = await client.get("https://openrouter.ai/api/v1/models", headers=headers, timeout=30.0)
@@ -170,12 +186,13 @@ async def fetch_available_models() -> list:
 async def query_models_parallel(
     models: List[str],
     messages: List[Dict[str, Any]],
+    api_key: str,
     timeout: float = 120.0,
     extra_body: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Optional[Dict[str, Any]]]:
     """Query multiple models in parallel."""
     tasks = [
-        query_model(model, messages, timeout=timeout, extra_body=extra_body)
+        query_model(model, messages, api_key=api_key, timeout=timeout, extra_body=extra_body)
         for model in models
     ]
 

@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import UsageBadge from './UsageBadge';
 import './Stage3.css';
 
@@ -44,7 +45,7 @@ export default function Stage3({ finalResponse }) {
           <UsageBadge usage={finalResponse.usage} />
         </div>
         <div className="final-text markdown-content">
-          <ReactMarkdown>{finalResponse.response}</ReactMarkdown>
+          <ReactMarkdown remarkPlugins={[remarkGfm]}>{finalResponse.response}</ReactMarkdown>
         </div>
       </div>
     </div>

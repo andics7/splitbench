@@ -1,5 +1,6 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import UsageBadge, { UsageSummary } from './UsageBadge';
 import './Stage2.css';
 
@@ -161,17 +162,191 @@ function EvaluatorCriterionScores({ criterionScores, rubricCriteria, labelToMode
   );
 }
 
+function EvaluationCard({ rank, labelToModel, rubricCriteria }) {
+  const structured = rank.structured_ranking;
+  const rankingOrder = rank.parsed_ranking || [];
+
+  return (
+    <div className="evaluation-card">
+      <div className="evaluation-header">
+        <div className="evaluation-title-group">
+          <span className="evaluation-model-name">
+            {shortModelName(rank.model)}
+          </span>
+          <FormatBadge mode={rank.format} />
+        </div>
+        <UsageBadge usage={rank.usage} />
+      </div>
+
+      <div className="evaluation-body">
+        <div className="evaluation-ranking-line">
+          <strong>Ranking:</strong> {formatRankingList(rankingOrder, labelToModel)}
+        </div>
+
+        {rank.criterion_scores && rubricCriteria && (
+          <EvaluatorCriterionScores
+            criterionScores={rank.criterion_scores}
+            rubricCriteria={rubricCriteria}
+            labelToModel={labelToModel}
+          />
+        )}
+
+        {structured ? (
+          <>
+            <p className="evaluation-rationale">
+              {structured.overall_rationale}
+            </p>
+            <div className="score-grid">
+              {(structured.evaluations || []).map((item) => (
+                <StructuredEvaluation
+                  key={item.response_label}
+                  item={item}
+                  labelToModel={labelToModel}
+                />
+              ))}
+            </div>
+            {structured.consensus_summary && (
+              <p className="evaluation-consensus-note">
+                <strong>Consensus note:</strong> {structured.consensus_summary}
+              </p>
+            )}
+          </>
+        ) : (
+          <>
+            <div className="markdown-content">
+              <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                {deAnonymizeText(rank.ranking, labelToModel)}
+              </ReactMarkdown>
+            </div>
+            {rankingOrder.length > 0 && (
+              <div className="parsed-ranking">
+                <strong>Extracted Ranking:</strong>
+                <ol>
+                  {rankingOrder.map((label, i) => (
+                    <li key={i}>
+                      {toModelNameFromLabel(label, labelToModel)}
+                    </li>
+                  ))}
+                </ol>
+              </div>
+            )}
+          </>
+        )}
+
+        {rank.validation_issues?.length > 0 && (
+          <div className="validation-issues">
+            <strong>Validation notes:</strong>
+            <ul>
+              {rank.validation_issues.map((issue, i) => (
+                <li key={i}>{issue}</li>
+              ))}
+            </ul>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export default function Stage2({ rankings, labelToModel, aggregateRankings, stage2Insights, rubricCriteria }) {
   const [showEvaluations, setShowEvaluations] = useState(false);
+  const [layoutMode, setLayoutMode] = useState(() => {
+    if (typeof window === 'undefined') return 'side-by-side';
+    return window.localStorage.getItem('splitbench.stage2.layout') || 'side-by-side';
+  });
+  const [splitRatio, setSplitRatio] = useState(() => {
+    if (typeof window === 'undefined') return 50;
+    const raw = Number(window.localStorage.getItem('splitbench.stage2.splitRatio'));
+    return Number.isFinite(raw) ? Math.min(80, Math.max(20, raw)) : 50;
+  });
+  const [isResizing, setIsResizing] = useState(false);
+  const containerRef = useRef(null);
+
+  useEffect(() => {
+    window.localStorage.setItem('splitbench.stage2.layout', layoutMode);
+  }, [layoutMode]);
+
+  useEffect(() => {
+    window.localStorage.setItem('splitbench.stage2.splitRatio', String(splitRatio));
+  }, [splitRatio]);
+
+  useEffect(() => {
+    if (!isResizing) return undefined;
+
+    const handleMouseMove = (e) => {
+      const container = containerRef.current;
+      if (!container) return;
+      const rect = container.getBoundingClientRect();
+      const x = e.clientX - rect.left;
+      const pct = (x / rect.width) * 100;
+      setSplitRatio(Math.min(80, Math.max(20, pct)));
+    };
+
+    const handleMouseUp = () => {
+      setIsResizing(false);
+    };
+
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+    window.addEventListener('mousemove', handleMouseMove);
+    window.addEventListener('mouseup', handleMouseUp);
+
+    return () => {
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, [isResizing]);
 
   if (!rankings || rankings.length === 0) {
     return null;
   }
 
+  const handleResizeStart = (e) => {
+    e.preventDefault();
+    setIsResizing(true);
+  };
+
+  const handleResizeReset = () => {
+    setSplitRatio(50);
+  };
+
+  const useSplitView = layoutMode === 'side-by-side' && rankings.length === 2;
+
   return (
     <div className="stage stage2">
       <div className="stage-header">
-        <h3 className="stage-title">Stage 2: Peer Rankings</h3>
+        <div className="stage-header-main">
+          <h3 className="stage-title">Stage 2: Peer Rankings</h3>
+        </div>
+        <div className="stage2-actions">
+          {showEvaluations && (
+            <div className="stage2-layout-toggle">
+              <button
+                type="button"
+                className={`stage2-layout-btn ${layoutMode === 'side-by-side' ? 'active' : ''}`}
+                onClick={() => setLayoutMode('side-by-side')}
+              >
+                Side by side
+              </button>
+              <button
+                type="button"
+                className={`stage2-layout-btn ${layoutMode === 'stacked' ? 'active' : ''}`}
+                onClick={() => setLayoutMode('stacked')}
+              >
+                Stacked
+              </button>
+            </div>
+          )}
+          <button
+            className="stage-toggle-btn"
+            type="button"
+            onClick={() => setShowEvaluations(!showEvaluations)}
+          >
+            {showEvaluations ? 'Hide' : 'Show'} evaluator notes ({rankings.length})
+          </button>
+        </div>
       </div>
 
       {/* Aggregate rankings - always visible at top */}
@@ -236,106 +411,55 @@ export default function Stage2({ rankings, labelToModel, aggregateRankings, stag
       )}
 
       {/* Expandable evaluations section */}
-      <button
-        className="expand-evaluations-btn"
-        onClick={() => setShowEvaluations(!showEvaluations)}
-      >
-        {showEvaluations ? 'Hide' : 'Show'} evaluator notes ({rankings.length})
-      </button>
-
       {showEvaluations && (
-        <>
+        <div className="stage2-evaluations-section">
+          <hr className="stage2-section-divider" />
+          <h4 className="stage2-evaluations-heading">Evaluation Details</h4>
           <p className="stage-description evaluations-note">
             Evaluations were performed on anonymized responses (Response A/B/C...). Names below are restored for readability.
           </p>
 
-          <div className="evaluations-grid">
-            {rankings.map((rank, index) => {
-              const structured = rank.structured_ranking;
-              const rankingOrder = rank.parsed_ranking || [];
-              return (
-                <div key={index} className="evaluation-card">
-                  <div className="evaluation-header">
-                    <div className="evaluation-title-group">
-                      <span className="evaluation-model-name">
-                        {shortModelName(rank.model)}
-                      </span>
-                      <FormatBadge mode={rank.format} />
-                    </div>
-                    <UsageBadge usage={rank.usage} />
-                  </div>
-
-                  <div className="evaluation-body">
-                    <div className="evaluation-ranking-line">
-                      <strong>Ranking:</strong> {formatRankingList(rankingOrder, labelToModel)}
-                    </div>
-
-                    {rank.criterion_scores && rubricCriteria && (
-                      <EvaluatorCriterionScores
-                        criterionScores={rank.criterion_scores}
-                        rubricCriteria={rubricCriteria}
-                        labelToModel={labelToModel}
-                      />
-                    )}
-
-                    {structured ? (
-                      <>
-                        <p className="evaluation-rationale">
-                          {structured.overall_rationale}
-                        </p>
-                        <div className="score-grid">
-                          {(structured.evaluations || []).map((item) => (
-                            <StructuredEvaluation
-                              key={item.response_label}
-                              item={item}
-                              labelToModel={labelToModel}
-                            />
-                          ))}
-                        </div>
-                        {structured.consensus_summary && (
-                          <p className="evaluation-consensus-note">
-                            <strong>Consensus note:</strong> {structured.consensus_summary}
-                          </p>
-                        )}
-                      </>
-                    ) : (
-                      <>
-                        <div className="markdown-content">
-                          <ReactMarkdown>
-                            {deAnonymizeText(rank.ranking, labelToModel)}
-                          </ReactMarkdown>
-                        </div>
-                        {rankingOrder.length > 0 && (
-                          <div className="parsed-ranking">
-                            <strong>Extracted Ranking:</strong>
-                            <ol>
-                              {rankingOrder.map((label, i) => (
-                                <li key={i}>
-                                  {toModelNameFromLabel(label, labelToModel)}
-                                </li>
-                              ))}
-                            </ol>
-                          </div>
-                        )}
-                      </>
-                    )}
-
-                    {rank.validation_issues?.length > 0 && (
-                      <div className="validation-issues">
-                        <strong>Validation notes:</strong>
-                        <ul>
-                          {rank.validation_issues.map((issue, i) => (
-                            <li key={i}>{issue}</li>
-                          ))}
-                        </ul>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </>
+          {useSplitView ? (
+            <div
+              className={`stage2-split-container ${isResizing ? 'is-resizing' : ''}`}
+              ref={containerRef}
+            >
+              <div className="stage2-panel" style={{ flexBasis: `${splitRatio}%` }}>
+                <EvaluationCard
+                  rank={rankings[0]}
+                  labelToModel={labelToModel}
+                  rubricCriteria={rubricCriteria}
+                />
+              </div>
+              <div
+                className="stage2-resizer"
+                onMouseDown={handleResizeStart}
+                onDoubleClick={handleResizeReset}
+                role="separator"
+                aria-orientation="vertical"
+                aria-label="Resize evaluator panels"
+              />
+              <div className="stage2-panel" style={{ flexBasis: `${100 - splitRatio}%` }}>
+                <EvaluationCard
+                  rank={rankings[1]}
+                  labelToModel={labelToModel}
+                  rubricCriteria={rubricCriteria}
+                />
+              </div>
+            </div>
+          ) : (
+            <div className={`evaluations-grid ${layoutMode === 'stacked' ? 'stacked' : ''}`}>
+              {rankings.map((rank, index) => (
+                <EvaluationCard
+                  key={index}
+                  rank={rank}
+                  labelToModel={labelToModel}
+                  rubricCriteria={rubricCriteria}
+                />
+              ))}
+            </div>
+          )}
+        </div>
       )}
 
       <UsageSummary results={rankings} label="Stage 2 total" />

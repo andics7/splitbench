@@ -19,3 +19,9 @@ data/
 frontend/node_modules/
 frontend/dist/
 frontend/.vite/
+
+# Root node_modules
+node_modules/
+
+# Claude IDE config
+.claude/

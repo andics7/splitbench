@@ -5,6 +5,7 @@ import ModelSelector from './components/ModelSelector';
 import PromptLibrary from './components/PromptLibrary';
 import AnalyticsDashboard from './components/AnalyticsDashboard';
 import ConfirmDialog from './components/ConfirmDialog';
+import ProfileSelector from './components/ProfileSelector';
 import { api } from './api';
 import './App.css';
 
@@ -39,6 +40,9 @@ function getInitialIsMobileViewport() {
 }
 
 function App() {
+  const [currentProfile, setCurrentProfile] = useState(null);
+  const [profileReady, setProfileReady] = useState(false);
+  const [showProfileSelector, setShowProfileSelector] = useState(false);
   const [conversations, setConversations] = useState([]);
   const [currentConversationId, setCurrentConversationId] = useState(null);
   const [currentConversation, setCurrentConversation] = useState(null);
@@ -60,6 +64,38 @@ function App() {
   const openDialog = useCallback((opts) => setDialog(opts), []);
   const closeDialog = useCallback(() => setDialog(null), []);
 
+  // Profile initialization: check localStorage for saved profile
+  useEffect(() => {
+    const savedProfileId = window.localStorage.getItem('splitbench.profileId');
+    if (savedProfileId) {
+      api.getProfile(savedProfileId)
+        .then((profile) => {
+          setCurrentProfile(profile);
+          setProfileReady(true);
+        })
+        .catch(() => {
+          // Saved profile no longer valid — clear and show selector
+          window.localStorage.removeItem('splitbench.profileId');
+          setProfileReady(true);
+        });
+    } else {
+      setProfileReady(true);
+    }
+  }, []);
+
+  const handleSelectProfile = (profile) => {
+    window.localStorage.setItem('splitbench.profileId', profile.id);
+    setCurrentProfile(profile);
+    // Clear all workspace state for the new profile
+    setConversations([]);
+    setCurrentConversationId(null);
+    setCurrentConversation(null);
+    setBalance(null);
+    setModelConfig(null);
+    setShowProfileSelector(false);
+    setActiveView('chat');
+  };
+
   const loadBalance = async () => {
     try {
       const data = await api.getBalance();
@@ -69,12 +105,13 @@ function App() {
     }
   };
 
-  // Load conversations, balance, and model config on mount
+  // Load conversations, balance, and model config when profile is set
   useEffect(() => {
+    if (!currentProfile) return;
     loadConversations();
     loadBalance();
     api.getModelConfig().then(setModelConfig).catch(console.error);
-  }, []);
+  }, [currentProfile]);
 
   // Load conversation details when selected, but avoid clobbering
   // optimistic stream state while a message is actively streaming.
@@ -458,6 +495,19 @@ function App() {
     }
   };
 
+  // Show nothing until we've checked localStorage for a saved profile
+  if (!profileReady) return null;
+
+  // No profile selected — show welcome gate
+  if (!currentProfile) {
+    return (
+      <ProfileSelector
+        mode="welcome"
+        onSelectProfile={handleSelectProfile}
+      />
+    );
+  }
+
   return (
     <div className={`app ${isResizingSidebar ? 'is-resizing' : ''} ${isSidebarCollapsed ? 'sidebar-collapsed' : ''} ${isMobileSidebarOpen ? 'mobile-sidebar-open' : ''}`}>
       <div className="app-sidebar-shell">
@@ -506,6 +556,8 @@ function App() {
           width={!isMobileViewport ? (isSidebarCollapsed ? SIDEBAR_COLLAPSED_WIDTH : sidebarWidth) : undefined}
           isCollapsed={!isMobileViewport && isSidebarCollapsed}
           onToggleCollapse={handleToggleSidebarCollapse}
+          currentProfile={currentProfile}
+          onSwitchProfile={() => setShowProfileSelector(true)}
         />
       </div>
       <div
@@ -574,6 +626,14 @@ function App() {
         aria-label="Close menu"
         onClick={() => setIsMobileSidebarOpen(false)}
       />
+      {showProfileSelector && (
+        <ProfileSelector
+          mode="modal"
+          currentProfileId={currentProfile?.id}
+          onSelectProfile={handleSelectProfile}
+          onClose={() => setShowProfileSelector(false)}
+        />
+      )}
     </div>
   );
 }

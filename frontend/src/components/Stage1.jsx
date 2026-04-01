@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, useRef } from 'react';
 import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import UsageBadge, { UsageSummary } from './UsageBadge';
 import './Stage1.css';
 
@@ -35,7 +36,7 @@ function ResponseCard({ response, aggregateRankings }) {
       </div>
       <div className="response-body">
         <div className="markdown-content">
-          <ReactMarkdown>{response.response}</ReactMarkdown>
+          <ReactMarkdown remarkPlugins={[remarkGfm]}>{response.response}</ReactMarkdown>
         </div>
       </div>
     </div>
@@ -49,8 +50,16 @@ export default function Stage1({
   failedModels,
 }) {
   const [showResponses, setShowResponses] = useState(false);
-  const [viewMode, setViewMode] = useState('grid');
+  const [viewMode, setViewMode] = useState('side-by-side');
   const [activeModel, setActiveModel] = useState('');
+  const [splitRatio, setSplitRatio] = useState(() => {
+    if (typeof window === 'undefined') return 50;
+    const raw = Number(window.localStorage.getItem('splitbench.stage1.splitRatio'));
+    return Number.isFinite(raw) ? Math.min(80, Math.max(20, raw)) : 50;
+  });
+  const [isResizing, setIsResizing] = useState(false);
+  const containerRef = useRef(null);
+
   const safeResponses = useMemo(
     () => (Array.isArray(responses) ? responses : []),
     [responses],
@@ -78,11 +87,15 @@ export default function Stage1({
   const configuredCount = Math.max(councilModelCount || safeResponses.length, safeResponses.length);
   const successCount = successfulResponses.length;
   const failureCount = failedModelEntries.length || Math.max(0, configuredCount - successCount);
-  const defaultViewMode = successCount > 2 ? 'focus' : 'grid';
 
+  // Default to focus for 3+ models, side-by-side for 2
   useEffect(() => {
-    setViewMode(defaultViewMode);
-  }, [defaultViewMode]);
+    if (successCount > 2) {
+      setViewMode('focus');
+    } else {
+      setViewMode('side-by-side');
+    }
+  }, [successCount]);
 
   useEffect(() => {
     if (successfulResponses.length === 0) {
@@ -96,11 +109,55 @@ export default function Stage1({
     }
   }, [activeModel, successfulResponses]);
 
+  useEffect(() => {
+    window.localStorage.setItem('splitbench.stage1.splitRatio', String(splitRatio));
+  }, [splitRatio]);
+
+  useEffect(() => {
+    if (!isResizing) return undefined;
+
+    const handleMouseMove = (e) => {
+      const container = containerRef.current;
+      if (!container) return;
+      const rect = container.getBoundingClientRect();
+      const x = e.clientX - rect.left;
+      const pct = (x / rect.width) * 100;
+      setSplitRatio(Math.min(80, Math.max(20, pct)));
+    };
+
+    const handleMouseUp = () => {
+      setIsResizing(false);
+    };
+
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+    window.addEventListener('mousemove', handleMouseMove);
+    window.addEventListener('mouseup', handleMouseUp);
+
+    return () => {
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, [isResizing]);
+
   const activeResponse = successfulResponses.find((resp) => resp.model === activeModel) || successfulResponses[0];
 
   if (safeResponses.length === 0) {
     return null;
   }
+
+  const handleResizeStart = (e) => {
+    e.preventDefault();
+    setIsResizing(true);
+  };
+
+  const handleResizeReset = () => {
+    setSplitRatio(50);
+  };
+
+  const useSplitView = viewMode === 'side-by-side' && successCount === 2;
 
   return (
     <div className="stage stage1">
@@ -120,21 +177,30 @@ export default function Stage1({
         </div>
 
         <div className="stage1-actions">
-          {showResponses && successCount > 2 && (
+          {showResponses && successCount >= 2 && (
             <div className="stage1-view-toggle">
+              {successCount > 2 && (
+                <button
+                  type="button"
+                  className={`stage1-view-btn ${viewMode === 'focus' ? 'active' : ''}`}
+                  onClick={() => setViewMode('focus')}
+                >
+                  Focus
+                </button>
+              )}
               <button
                 type="button"
-                className={`stage1-view-btn ${viewMode === 'focus' ? 'active' : ''}`}
-                onClick={() => setViewMode('focus')}
+                className={`stage1-view-btn ${viewMode === 'side-by-side' ? 'active' : ''}`}
+                onClick={() => setViewMode('side-by-side')}
               >
-                Focus
+                Side by side
               </button>
               <button
                 type="button"
-                className={`stage1-view-btn ${viewMode === 'grid' ? 'active' : ''}`}
-                onClick={() => setViewMode('grid')}
+                className={`stage1-view-btn ${viewMode === 'stacked' ? 'active' : ''}`}
+                onClick={() => setViewMode('stacked')}
               >
-                Grid
+                Stacked
               </button>
             </div>
           )}
@@ -193,6 +259,32 @@ export default function Stage1({
               <div className="stage1-focus-panel">
                 {activeResponse && <ResponseCard response={activeResponse} aggregateRankings={aggregateRankings} />}
               </div>
+            </div>
+          ) : useSplitView ? (
+            <div
+              className={`stage1-split-container ${isResizing ? 'is-resizing' : ''}`}
+              ref={containerRef}
+            >
+              <div className="stage1-split-panel" style={{ flexBasis: `${splitRatio}%` }}>
+                <ResponseCard response={successfulResponses[0]} aggregateRankings={aggregateRankings} />
+              </div>
+              <div
+                className="stage1-resizer"
+                onMouseDown={handleResizeStart}
+                onDoubleClick={handleResizeReset}
+                role="separator"
+                aria-orientation="vertical"
+                aria-label="Resize response panels"
+              />
+              <div className="stage1-split-panel" style={{ flexBasis: `${100 - splitRatio}%` }}>
+                <ResponseCard response={successfulResponses[1]} aggregateRankings={aggregateRankings} />
+              </div>
+            </div>
+          ) : viewMode === 'stacked' ? (
+            <div className="stage1-grid stacked">
+              {successfulResponses.map((resp) => (
+                <ResponseCard key={resp.model} response={resp} aggregateRankings={aggregateRankings} />
+              ))}
             </div>
           ) : (
             <div className="stage1-grid">

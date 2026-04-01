@@ -3,6 +3,21 @@ import { createRoot } from 'react-dom/client'
 import './index.css'
 import App from './App.jsx'
 
+// Suppress benign ResizeObserver loop errors (triggered by chart libraries like
+// recharts).  These are async errors that bypass React error boundaries and can
+// crash the page in Brave / Edge.
+if (typeof window !== 'undefined') {
+  window.addEventListener('error', (e) => {
+    if (
+      e.message?.includes('ResizeObserver loop') ||
+      e.message?.includes('ResizeObserver loop completed with undelivered notifications')
+    ) {
+      e.stopImmediatePropagation();
+      e.preventDefault();
+    }
+  });
+}
+
 class ErrorBoundary extends Component {
   constructor(props) {
     super(props);

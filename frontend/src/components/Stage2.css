@@ -12,6 +12,51 @@
   line-height: 1.5;
 }
 
+/* --- Actions row (right side of header) --- */
+
+.stage2-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+/* --- Layout toggle (segmented control) --- */
+
+.stage2-layout-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--border);
+  background: var(--bg-subtle);
+}
+
+.stage2-layout-btn {
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  border-radius: var(--radius-pill);
+  padding: 4px 10px;
+  font-size: var(--fs-11);
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.stage2-layout-btn:hover {
+  color: var(--text-body);
+}
+
+.stage2-layout-btn.active {
+  background: var(--bg-surface);
+  color: var(--text-body);
+  box-shadow: var(--shadow-sm);
+}
+
+/* --- Aggregate rankings --- */
+
 .aggregate-rankings {
   background: var(--bg-subtle);
   padding: 10px;
@@ -109,29 +154,35 @@
   white-space: nowrap;
 }
 
-.expand-evaluations-btn {
-  width: 100%;
-  padding: 8px 10px;
-  margin-top: 10px;
-  background: var(--bg-surface);
-  border: 1px dashed var(--border-strong);
-  border-radius: var(--radius-pill);
-  cursor: pointer;
-  font-size: var(--fs-12);
-  font-weight: 700;
-  color: var(--text-muted);
-  transition: all 0.15s;
+/* --- Evaluations section (expandable) --- */
+
+.stage2-evaluations-section {
+  animation: stage2-slide-in 0.2s ease-out;
 }
 
-.expand-evaluations-btn:hover {
-  border-color: var(--accent-outline);
+@keyframes stage2-slide-in {
+  from { opacity: 0; transform: translateY(-6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.stage2-section-divider {
+  margin: 14px 0 10px;
+  border: none;
+  border-top: 1px solid var(--border);
+}
+
+.stage2-evaluations-heading {
+  margin: 0 0 6px;
   color: var(--accent-text);
-  background: var(--bg-soft);
+  font-size: var(--fs-13);
+  font-weight: 700;
 }
 
 .evaluations-note {
-  margin-top: 10px;
+  margin-top: 0;
 }
+
+/* --- Evaluations grid (3+ evaluators or stacked mode) --- */
 
 .evaluations-grid {
   display: grid;
@@ -140,11 +191,68 @@
   margin-top: 10px;
 }
 
+.evaluations-grid.stacked {
+  grid-template-columns: 1fr;
+}
+
+/* --- Split container (2 evaluators, side-by-side) --- */
+
+.stage2-split-container {
+  display: flex;
+  gap: 0;
+  margin-top: 10px;
+}
+
+.stage2-panel {
+  min-width: 0;
+  overflow: hidden;
+}
+
+.stage2-resizer {
+  flex: 0 0 8px;
+  cursor: col-resize;
+  background: linear-gradient(
+    to right,
+    transparent 0,
+    transparent 2px,
+    var(--border) 2px,
+    var(--border) 3px,
+    transparent 3px,
+    transparent 100%
+  );
+  transition: background 0.15s;
+}
+
+.stage2-resizer:hover,
+.stage2-split-container.is-resizing .stage2-resizer {
+  background: linear-gradient(
+    to right,
+    transparent 0,
+    transparent 2px,
+    var(--accent-outline) 2px,
+    var(--accent-outline) 3px,
+    transparent 3px,
+    transparent 100%
+  );
+}
+
+.stage2-split-container.is-resizing {
+  user-select: none;
+}
+
+/* --- Evaluation card --- */
+
 .evaluation-card {
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   background: var(--bg-surface);
   overflow: hidden;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.evaluation-card:hover {
+  border-color: var(--accent-outline);
+  box-shadow: var(--shadow-sm);
 }
 
 .evaluation-header {
@@ -527,6 +635,22 @@
   font-family: var(--font-mono);
 }
 
+/* --- Responsive --- */
+
+@media (max-width: 959px) {
+  .stage2-split-container {
+    flex-direction: column;
+  }
+
+  .stage2-panel {
+    flex-basis: auto !important;
+  }
+
+  .stage2-resizer {
+    display: none;
+  }
+}
+
 @media (min-width: 960px) {
   .aggregate-item {
     grid-template-columns: 44px minmax(0, 1fr) auto auto auto;
@@ -539,7 +663,7 @@
     grid-column: auto;
   }
 
-  .evaluations-grid {
+  .evaluations-grid:not(.stacked) {
     grid-template-columns: repeat(auto-fit, minmax(360px, 1fr));
     gap: 12px;
   }

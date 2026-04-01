@@ -1,4 +1,4 @@
-"""Prompt template storage and management."""
+"""Prompt template storage and management, scoped per profile."""
 
 import json
 import os
@@ -7,16 +7,28 @@ from typing import List, Dict, Any, Optional
 from pathlib import Path
 import uuid
 
-
-PROMPTS_DIR = Path(__file__).parent.parent / "data" / "prompts"
-TEMPLATES_FILE = PROMPTS_DIR / "templates.json"
-HISTORY_FILE = PROMPTS_DIR / "history.json"
-RUBRICS_FILE = PROMPTS_DIR / "rubrics.json"
+from .profiles import get_profile_data_dir
 
 
-def _ensure_dir():
-    """Ensure the prompts data directory exists."""
-    PROMPTS_DIR.mkdir(parents=True, exist_ok=True)
+def _prompts_dir(profile_id: str) -> Path:
+    return get_profile_data_dir(profile_id) / "prompts"
+
+
+def _templates_file(profile_id: str) -> Path:
+    return _prompts_dir(profile_id) / "templates.json"
+
+
+def _history_file(profile_id: str) -> Path:
+    return _prompts_dir(profile_id) / "history.json"
+
+
+def _rubrics_file(profile_id: str) -> Path:
+    return _prompts_dir(profile_id) / "rubrics.json"
+
+
+def _ensure_dir(profile_id: str):
+    """Ensure the prompts data directory exists for a profile."""
+    _prompts_dir(profile_id).mkdir(parents=True, exist_ok=True)
 
 
 def _load_json(path: Path) -> dict:
@@ -27,9 +39,9 @@ def _load_json(path: Path) -> dict:
         return json.load(f)
 
 
-def _save_json(path: Path, data: dict):
+def _save_json(profile_id: str, path: Path, data: dict):
     """Save data as JSON to file."""
-    _ensure_dir()
+    _ensure_dir(profile_id)
     with open(path, "w") as f:
         json.dump(data, f, indent=2)
 
@@ -256,43 +268,56 @@ CATEGORIES = [
 ]
 
 
+# Per-profile init tracking
+_initialized: set[str] = set()
+
+
+def _ensure_initialized(profile_id: str):
+    """Lazily initialize on first access for a profile."""
+    if profile_id not in _initialized:
+        init(profile_id)
+        _initialized.add(profile_id)
+
+
 # ---------------------------------------------------------------------------
 # Template CRUD
 # ---------------------------------------------------------------------------
 
-def init():
-    """Initialize prompts storage. Seed built-ins if needed."""
-    _ensure_dir()
-    if not TEMPLATES_FILE.exists():
+def init(profile_id: str):
+    """Initialize prompts storage for a profile. Seed built-ins if needed."""
+    _ensure_dir(profile_id)
+    templates_path = _templates_file(profile_id)
+    if not templates_path.exists():
         now = datetime.utcnow().isoformat()
         templates = []
         for t in BUILTIN_TEMPLATES:
             t = {**t, "created_at": now, "updated_at": now}
             templates.append(t)
-        _save_json(TEMPLATES_FILE, {"templates": templates})
-    if not HISTORY_FILE.exists():
-        _save_json(HISTORY_FILE, {"history": []})
+        _save_json(profile_id, templates_path, {"templates": templates})
+    history_path = _history_file(profile_id)
+    if not history_path.exists():
+        _save_json(profile_id, history_path, {"history": []})
 
 
-def get_all_templates() -> List[Dict[str, Any]]:
-    """Return all templates."""
-    _ensure_initialized()
-    data = _load_json(TEMPLATES_FILE)
+def get_all_templates(profile_id: str) -> List[Dict[str, Any]]:
+    """Return all templates for a profile."""
+    _ensure_initialized(profile_id)
+    data = _load_json(_templates_file(profile_id))
     return data.get("templates", [])
 
 
-def get_template(template_id: str) -> Optional[Dict[str, Any]]:
+def get_template(profile_id: str, template_id: str) -> Optional[Dict[str, Any]]:
     """Return a single template by ID."""
-    for t in get_all_templates():
+    for t in get_all_templates(profile_id):
         if t["id"] == template_id:
             return t
     return None
 
 
-def save_template(template: Dict[str, Any]) -> Dict[str, Any]:
+def save_template(profile_id: str, template: Dict[str, Any]) -> Dict[str, Any]:
     """Create or update a template. Returns the saved template."""
     now = datetime.utcnow().isoformat()
-    templates = get_all_templates()
+    templates = get_all_templates(profile_id)
 
     if "id" not in template or not template["id"]:
         template["id"] = str(uuid.uuid4())
@@ -302,39 +327,37 @@ def save_template(template: Dict[str, Any]) -> Dict[str, Any]:
 
     template["updated_at"] = now
 
-    # Update existing or append
     idx = next((i for i, t in enumerate(templates) if t["id"] == template["id"]), -1)
     if idx >= 0:
-        # Preserve created_at and is_builtin from existing
         template["created_at"] = templates[idx].get("created_at", now)
         template["is_builtin"] = templates[idx].get("is_builtin", False)
         templates[idx] = template
     else:
         templates.append(template)
 
-    _save_json(TEMPLATES_FILE, {"templates": templates})
+    _save_json(profile_id, _templates_file(profile_id), {"templates": templates})
     return template
 
 
-def delete_template(template_id: str) -> bool:
+def delete_template(profile_id: str, template_id: str) -> bool:
     """Delete a user-created template. Returns False if builtin or not found."""
-    templates = get_all_templates()
+    templates = get_all_templates(profile_id)
     target = next((t for t in templates if t["id"] == template_id), None)
     if not target or target.get("is_builtin"):
         return False
     templates = [t for t in templates if t["id"] != template_id]
-    _save_json(TEMPLATES_FILE, {"templates": templates})
+    _save_json(profile_id, _templates_file(profile_id), {"templates": templates})
     return True
 
 
-def increment_usage(template_id: str):
+def increment_usage(profile_id: str, template_id: str):
     """Increment usage count for a template."""
-    templates = get_all_templates()
+    templates = get_all_templates(profile_id)
     for t in templates:
         if t["id"] == template_id:
             t["usage_count"] = t.get("usage_count", 0) + 1
             break
-    _save_json(TEMPLATES_FILE, {"templates": templates})
+    _save_json(profile_id, _templates_file(profile_id), {"templates": templates})
 
 
 # ---------------------------------------------------------------------------
@@ -344,21 +367,22 @@ def increment_usage(template_id: str):
 MAX_HISTORY = 100
 
 
-def get_history(limit: int = 20) -> List[Dict[str, Any]]:
+def get_history(profile_id: str, limit: int = 20) -> List[Dict[str, Any]]:
     """Return recent prompt history, newest first."""
-    _ensure_initialized()
-    data = _load_json(HISTORY_FILE)
+    _ensure_initialized(profile_id)
+    data = _load_json(_history_file(profile_id))
     history = data.get("history", [])
     return history[:limit]
 
 
 def add_to_history(
+    profile_id: str,
     content: str,
     template_id: Optional[str] = None,
     attachments: Optional[List[Dict[str, Any]]] = None,
 ):
     """Add a prompt to history."""
-    data = _load_json(HISTORY_FILE)
+    data = _load_json(_history_file(profile_id))
     history = data.get("history", [])
 
     item = {
@@ -370,24 +394,24 @@ def add_to_history(
     }
 
     history = [item] + history[:MAX_HISTORY - 1]
-    _save_json(HISTORY_FILE, {"history": history})
+    _save_json(profile_id, _history_file(profile_id), {"history": history})
     return item
 
 
-def delete_history_item(item_id: str) -> bool:
+def delete_history_item(profile_id: str, item_id: str) -> bool:
     """Remove a single history item."""
-    data = _load_json(HISTORY_FILE)
+    data = _load_json(_history_file(profile_id))
     history = data.get("history", [])
     new_history = [h for h in history if h["id"] != item_id]
     if len(new_history) == len(history):
         return False
-    _save_json(HISTORY_FILE, {"history": new_history})
+    _save_json(profile_id, _history_file(profile_id), {"history": new_history})
     return True
 
 
-def clear_history():
+def clear_history(profile_id: str):
     """Clear all prompt history."""
-    _save_json(HISTORY_FILE, {"history": []})
+    _save_json(profile_id, _history_file(profile_id), {"history": []})
 
 
 # ---------------------------------------------------------------------------
@@ -395,32 +419,33 @@ def clear_history():
 # ---------------------------------------------------------------------------
 
 
-def _ensure_rubrics_file():
+def _ensure_rubrics_file(profile_id: str):
     """Ensure rubrics.json exists."""
-    _ensure_dir()
-    if not RUBRICS_FILE.exists():
-        _save_json(RUBRICS_FILE, {"rubrics": []})
+    _ensure_dir(profile_id)
+    path = _rubrics_file(profile_id)
+    if not path.exists():
+        _save_json(profile_id, path, {"rubrics": []})
 
 
-def get_all_rubrics() -> List[Dict[str, Any]]:
+def get_all_rubrics(profile_id: str) -> List[Dict[str, Any]]:
     """Return all saved rubrics."""
-    _ensure_rubrics_file()
-    data = _load_json(RUBRICS_FILE)
+    _ensure_rubrics_file(profile_id)
+    data = _load_json(_rubrics_file(profile_id))
     return data.get("rubrics", [])
 
 
-def get_rubric(rubric_id: str) -> Optional[Dict[str, Any]]:
+def get_rubric(profile_id: str, rubric_id: str) -> Optional[Dict[str, Any]]:
     """Return a single rubric by ID."""
-    for r in get_all_rubrics():
+    for r in get_all_rubrics(profile_id):
         if r["id"] == rubric_id:
             return r
     return None
 
 
-def save_rubric(rubric: Dict[str, Any]) -> Dict[str, Any]:
+def save_rubric(profile_id: str, rubric: Dict[str, Any]) -> Dict[str, Any]:
     """Create or update a rubric. Returns the saved rubric."""
     now = datetime.utcnow().isoformat()
-    rubrics = get_all_rubrics()
+    rubrics = get_all_rubrics(profile_id)
 
     if "id" not in rubric or not rubric["id"]:
         rubric["id"] = str(uuid.uuid4())
@@ -435,31 +460,20 @@ def save_rubric(rubric: Dict[str, Any]) -> Dict[str, Any]:
     else:
         rubrics.append(rubric)
 
-    _save_json(RUBRICS_FILE, {"rubrics": rubrics})
+    _save_json(profile_id, _rubrics_file(profile_id), {"rubrics": rubrics})
     return rubric
 
 
-def delete_rubric(rubric_id: str) -> bool:
+def delete_rubric(profile_id: str, rubric_id: str) -> bool:
     """Delete a rubric. Returns False if not found."""
-    rubrics = get_all_rubrics()
+    rubrics = get_all_rubrics(profile_id)
     new_rubrics = [r for r in rubrics if r["id"] != rubric_id]
     if len(new_rubrics) == len(rubrics):
         return False
-    _save_json(RUBRICS_FILE, {"rubrics": new_rubrics})
+    _save_json(profile_id, _rubrics_file(profile_id), {"rubrics": new_rubrics})
     return True
 
 
 def get_categories() -> List[Dict[str, str]]:
     """Return available template categories."""
     return CATEGORIES
-
-
-_initialized = False
-
-
-def _ensure_initialized():
-    """Lazily initialize on first access."""
-    global _initialized
-    if not _initialized:
-        init()
-        _initialized = True

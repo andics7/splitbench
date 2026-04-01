@@ -3,7 +3,8 @@
 .ad-dashboard {
   display: flex;
   flex-direction: column;
-  height: 100%;
+  flex: 1;
+  min-height: 0;
   overflow-y: auto;
   background: var(--bg-canvas, #f3f4f6);
 }
@@ -420,4 +421,14 @@
   .ad-filter-group {
     flex-wrap: wrap;
   }
+}
+
+.ad-chart-fallback {
+  padding: 24px;
+  text-align: center;
+  color: var(--text-secondary, #6b7280);
+  font-size: 13px;
+  background: var(--bg-subtle, #f9fafb);
+  border-radius: 10px;
+  border: 1px dashed var(--border, #e5e7eb);
 }
